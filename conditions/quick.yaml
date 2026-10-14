@@ -1,0 +1,6 @@
+delay: netem               # netem | none
+rows: [1, 10, 100, 1000]
+fetch_sizes: [10, 100, 1000]
+delays_ms: [0, 5, 20]
+repeats: 3
+warmups: 10
