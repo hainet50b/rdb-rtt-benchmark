@@ -1,0 +1,24 @@
+name: rdb-rtt-benchmark
+
+services:
+  oracle:
+    container_name: rdb-rtt-benchmark-oracle
+    image: gvenzl/oracle-free:23-slim
+    environment:
+      ORACLE_RANDOM_PASSWORD: "yes"
+      APP_USER: rdb_rtt_benchmark
+      APP_USER_PASSWORD: rdb_rtt_benchmark
+    volumes:
+      - ./services/oracle/initdb:/container-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      retries: 30
+
+  delay:
+    container_name: rdb-rtt-benchmark-delay
+    build: ./services/delay
+    cap_add: [NET_ADMIN]
+    depends_on:
+      oracle:
+        condition: service_healthy
