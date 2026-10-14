@@ -1,0 +1,6 @@
+name: Fetch one row by primary key
+rows:
+  source: fixed
+  count: 1
+parameters:
+  id: 42
