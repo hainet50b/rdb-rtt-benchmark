@@ -1,0 +1,10 @@
+# The Oracle Database container in compose.yaml.
+# Values can refer to environment variables, such as ${BENCH_DB_PASSWORD}.
+type: oracle
+host: rdb-rtt-benchmark-oracle
+port: 1521
+database: FREEPDB1
+user: rdb_rtt_benchmark
+password: rdb_rtt_benchmark
+# Runs schema.sql and data.sql of each workload in the local container.
+setup: true
