@@ -128,16 +128,20 @@ parameters:
 
 ### Scenarios
 
-Each file in `scenarios/` is a scenario: the queries that one operation runs.
+Each file in `scenarios/` is a scenario: the transactions that one operation runs, and the queries in each transaction.
 
 ```yaml
-name: Order lookup (example)
-queries:
-  - workload: W-01
-    count: 3
-  - workload: W-02
-    rows: 100
+name: Product lookup per order line, N+1 (example)
+transactions:
+  - queries:
+      - workload: W-02
+        rows: 100
+        count: 1
     count: 1
+  - queries:
+      - workload: W-01
+        count: 1
+    count: 100
 ```
 
 The report shows the response time of each scenario.
