@@ -1,7 +1,9 @@
 name: Order lookup (example)
-queries:
-  - workload: W-01
-    count: 3
-  - workload: W-02
-    rows: 100
+transactions:
+  - queries:
+      - workload: W-01
+        count: 3
+      - workload: W-02
+        rows: 100
+        count: 1
     count: 1

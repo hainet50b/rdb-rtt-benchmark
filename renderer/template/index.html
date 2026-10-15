@@ -104,16 +104,14 @@
           <button class="link-btn" id="sim-reset" data-i18n="sim.reset" hidden></button>
         </div>
         <p class="warn" id="sim-warn" hidden></p>
-        <div class="query-list" style="margin-bottom:16px">
-          <ul class="query-list" id="scenario-queries" style="border:0;border-radius:0"></ul>
-          <button class="add-row" id="query-add" style="border-bottom:0" data-i18n="query.add"></button>
-        </div>
+        <div id="scenario-txs"></div>
+        <button class="add-row add-tx" id="tx-add" data-i18n="tx.add"></button>
         <div class="controls">
           <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.rows"></span><span class="val off" data-i18n="ctl.perSql"></span></div><div class="stepper" id="s-simrows" data-i18n-aria="ctl.rows"></div></div>
           <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.delta"></span><span class="val" id="v-simdelta"></span></div><div class="stepper" id="s-simdelta" aria-label="ΔRTT"></div></div>
           <div class="ctl wide row-ctl"><div class="axis-ctl"><span class="ctl-label" data-i18n="ctl.axis"></span><div class="seg" role="group" data-i18n-aria="ctl.axis"><button disabled aria-pressed="false" data-i18n="ctl.axisRows"></button><button aria-pressed="true" data-i18n="ctl.axisDelta"></button></div></div></div>
         </div>
-        <div class="share-head" style="margin-top:4px"><h3 class="sub-h" style="margin:0" data-i18n="sim.total"></h3></div>
+        <div class="share-head" style="margin-top:4px"><h3 class="sub-h" style="margin:0" data-i18n="sim.total"></h3><span class="cap" id="v-boundary"></span></div>
         <div class="chart"><canvas id="ch-sim"></canvas></div>
         <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n="sim.share"></h3><span class="cap" id="v-share"></span></div>
         <div class="chart" style="height:220px"><canvas id="ch-share"></canvas></div>
@@ -137,32 +135,44 @@
       <div class="tabpanel" data-panel="cond" hidden>
         <div class="share-head" style="margin-top:0"><h3 class="sub-h" style="margin:0" data-i18n="range.title"></h3></div>
         <div class="trace">
-          <svg viewBox="0 0 1000 300" role="img" aria-labelledby="tr-title tr-desc">
+          <svg viewBox="0 0 1000 334" role="img" aria-labelledby="tr-title tr-desc">
             <title id="tr-title" data-i18n="range.svgTitle"></title>
             <desc id="tr-desc" data-i18n="range.svgDesc"></desc>
             <defs>
               <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" class="h-bg"/><line x1="0" y1="0" x2="0" y2="6" class="h-ln"/></pattern>
               <marker id="tr-ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" class="axis-h"/></marker>
             </defs>
-            <text class="lane" x="10" y="64" data-i18n="range.laneDa1"></text><text class="lane" x="10" y="80" data-i18n="range.laneDa2"></text>
+            <text class="brace-t" x="551" y="16" text-anchor="middle" data-i18n="range.tx"></text>
+            <path class="brace" d="M212 32 V24 H890 V32"/>
+            <g transform="translate(0 34)">
+            <text class="lane" x="10" y="74" data-i18n="range.laneApp"></text>
             <text class="lane" x="10" y="122" data-i18n="range.laneJdbc"></text>
             <text class="lane" x="10" y="172" data-i18n="range.laneNet"></text>
             <text class="lane" x="10" y="222" data-i18n="range.laneDb"></text>
             <line class="grid" x1="166" y1="48" x2="166" y2="240"/>
-            <rect class="band" x="310" y="40" width="540" height="200" rx="8"/>
-            <path class="brace" d="M310 34 V26 H850 V34"/>
-            <text class="brace-t" x="580" y="18" text-anchor="middle" data-i18n="range.brace"></text>
-            <rect class="sp out" x="172" y="56" width="50" height="26" rx="5"/><text class="st" x="197" y="74" text-anchor="middle" data-i18n="range.acquire"></text>
-            <rect class="sp out" x="230" y="56" width="70" height="26" rx="5"/><text class="st" x="265" y="74" text-anchor="middle" data-i18n="range.statsBefore"></text>
-            <rect class="sp in" x="312" y="56" width="536" height="26" rx="5"/><text class="st in" x="580" y="74" text-anchor="middle" data-i18n="range.dao"></text>
-            <rect class="sp out" x="860" y="56" width="70" height="26" rx="5"/><text class="st" x="895" y="74" text-anchor="middle" data-i18n="range.statsAfter"></text>
-            <rect class="sp out" x="938" y="56" width="50" height="26" rx="5"/><text class="st" x="963" y="74" text-anchor="middle" data-i18n="range.release"></text>
+            <rect class="band" x="212" y="40" width="148" height="200" rx="8"/>
+            <rect class="band" x="402" y="40" width="298" height="200" rx="8"/>
+            <rect class="band" x="742" y="40" width="148" height="200" rx="8"/>
+            <path class="brace" d="M212 34 V26 H360 V34"/>
+            <path class="brace" d="M402 34 V26 H700 V34"/>
+            <path class="brace" d="M742 34 V26 H890 V34"/>
+            <text class="brace-t" x="286" y="18" text-anchor="middle">acquire</text>
+            <text class="brace-t" x="551" y="18" text-anchor="middle" data-i18n="range.brace"></text>
+            <text class="brace-t" x="816" y="18" text-anchor="middle">commit</text>
+            <rect class="sp out" x="172" y="56" width="38" height="26" rx="5"/><text class="st" x="191" y="74" text-anchor="middle" data-i18n="range.stats"></text>
+            <rect class="sp bd" x="216" y="56" width="140" height="26" rx="5"/><text class="st bd" x="286" y="74" text-anchor="middle">acquire</text>
+            <rect class="sp out" x="362" y="56" width="38" height="26" rx="5"/><text class="st" x="381" y="74" text-anchor="middle" data-i18n="range.stats"></text>
+            <rect class="sp in" x="406" y="56" width="290" height="26" rx="5"/><text class="st in" x="551" y="74" text-anchor="middle" data-i18n="range.dao"></text>
+            <rect class="sp out" x="702" y="56" width="38" height="26" rx="5"/><text class="st" x="721" y="74" text-anchor="middle" data-i18n="range.stats"></text>
+            <rect class="sp bd" x="746" y="56" width="140" height="26" rx="5"/><text class="st bd" x="816" y="74" text-anchor="middle">commit</text>
+            <rect class="sp out" x="892" y="56" width="38" height="26" rx="5"/><text class="st" x="911" y="74" text-anchor="middle" data-i18n="range.stats"></text>
             <g id="tr-fetches"></g>
             <line class="axis" x1="166" y1="262" x2="985" y2="262" marker-end="url(#tr-ah)"/>
             <text class="st" x="985" y="284" text-anchor="end" data-i18n="range.time"></text>
+            </g>
           </svg>
         </div>
-        <div class="tr-legend"><span><i class="l-in"></i><span data-i18n="range.lgIn"></span></span><span><i class="l-out"></i><span data-i18n="range.lgOut"></span></span><span><i class="l-dl"></i><span data-i18n="range.lgDelay"></span></span><span><i class="l-net"></i><span data-i18n="range.lgNet"></span></span><span><i class="l-db"></i><span data-i18n="range.lgDb"></span></span></div>
+        <div class="tr-legend"><span><i class="l-in"></i><span data-i18n="range.lgIn"></span></span><span><i class="l-bd"></i><span data-i18n="range.lgBd"></span></span><span><i class="l-out"></i><span data-i18n="range.lgOut"></span></span><span><i class="l-dl"></i><span data-i18n="range.lgDelay"></span></span><span><i class="l-net"></i><span data-i18n="range.lgNet"></span></span><span><i class="l-db"></i><span data-i18n="range.lgDb"></span></span></div>
         <div class="scroll" style="margin-top:14px"><table id="range-table" class="cond"></table></div>
         <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n="cond.title"></h3></div>
         <div class="scroll"><table id="cond-table" class="cond"></table></div>

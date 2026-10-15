@@ -30,20 +30,36 @@ const ROWS = MEASUREMENT.rows_axis, FETCH = MEASUREMENT.fetch_sizes, DELAYS = ME
 const DSTEPS = DELAYS.some(x => x > 0) ? DELAYS.filter(x => x > 0) : [...DELAYS];
 const W = id => WORKLOADS.find(w => w.id === id);
 const workloadLabel = w => w ? w.name : '';
-let CONFIG, AGG = new Map();
+let CONFIG, AGG = new Map(), BOUNDARIES = new Map();
 
-// results: { workloadId: [[rows, fetchSize, delayMs, elapsedMs, roundtrips], ...] }. A failed measurement has null values.
+// results: { workloadId: [[rows, fetchSize, delayMs, queryMs, queryRoundtrips, acquireMs, acquireRoundtrips, commitMs,
+// commitRoundtrips], ...] }. A failed measurement has null values.
+// The query uses medians. Acquire and commit use means: a scenario adds them as the expected value per transaction.
+const mean = a => a.reduce((sum, v) => sum + v, 0) / a.length;
+const BOUNDARY_FIELDS = ['acquire', 'acquireRt', 'commit', 'commitRt'];
 function aggregate(results) {
   const agg = new Map();
-  for (const [workload, list] of Object.entries(results)) for (const [rows, fetch, delay, elapsed, rt] of list) {
+  for (const [workload, list] of Object.entries(results)) for (const [rows, fetch, delay, elapsed, rt, ...boundary] of list) {
     const k = kk(workload, rows, fetch, delay);
-    if (!agg.has(k)) agg.set(k, { workload, rows, fetch, delay, runs: [], rts: [], failed: 0 });
+    if (!agg.has(k)) agg.set(k, { workload, rows, fetch, delay, runs: [], rts: [], boundaries: [], failed: 0 });
     const a = agg.get(k);
     if (elapsed == null) { a.failed++; continue; }
-    a.runs.push(elapsed); a.rts.push(rt);
+    a.runs.push(elapsed); a.rts.push(rt); a.boundaries.push(boundary);
   }
-  for (const a of agg.values()) if (a.runs.length) { a.med = q(a.runs, .5); a.p95 = q(a.runs, .95); a.min = Math.min(...a.runs); a.max = Math.max(...a.runs); a.roundtrips = Math.round(q(a.rts, .5)); }
+  for (const a of agg.values()) if (a.runs.length) {
+    a.med = q(a.runs, .5); a.p95 = q(a.runs, .95); a.min = Math.min(...a.runs); a.max = Math.max(...a.runs); a.roundtrips = Math.round(q(a.rts, .5));
+    BOUNDARY_FIELDS.forEach((field, i) => { a[field] = mean(a.boundaries.map(b => b[i])); });
+  }
   return agg;
+}
+// Acquire and commit do not depend on the query, so each ΔRTT has one mean over every measurement at that ΔRTT.
+function boundaries(agg) {
+  const byDelay = new Map();
+  for (const a of agg.values()) for (const b of a.boundaries) {
+    if (!byDelay.has(a.delay)) byDelay.set(a.delay, []);
+    byDelay.get(a.delay).push(b);
+  }
+  return new Map([...byDelay].map(([d, list]) => [d, Object.fromEntries(BOUNDARY_FIELDS.map((field, i) => [field, mean(list.map(b => b[i]))]))]));
 }
 const agg = (w, r, f, d) => AGG.get(kk(w, r, f, d));
 const val = (w, r, f, d) => agg(w, r, f, d)?.med;
@@ -131,7 +147,7 @@ const versions = c => COMPONENTS.map(([, , full]) => full(c));
 function onConfigChange() {
   const config = selectedConfig();
   if (!config) { showRunWarn(t('msg.noCombo')); document.querySelectorAll('.tabpanel').forEach(panel => { panel.hidden = true; }); drawWires(); return; }
-  CONFIG = config; AGG = config.agg ??= aggregate(config.results);
+  CONFIG = config; AGG = config.agg ??= aggregate(config.results); BOUNDARIES = config.boundaries ??= boundaries(AGG);
   COMPONENTS.forEach(([id], i) => { $(id).title = versions(config.configuration)[i]; });
   const m = MEASUREMENT;
   const all = [...AGG.values()], failed = all.reduce((sum, a) => sum + a.failed, 0);
@@ -199,12 +215,25 @@ function renderResult() {
   o.plugins.tooltip.callbacks = { label: tipLabel };
   draw('ch-result', { data: { datasets: ds }, options: o });
   const [framework, dataAccess, pool, driver, database] = versions(CONFIG.configuration);
-  DATA.result = { title: t('dlg.resultTitle'), rows: dataRows(w, onChart), context: [
+  DATA.result = { title: t('dlg.resultTitle'), columns: dataColumns(), rows: dataRows(w, onChart), context: [
     [t('diagram.framework'), framework], [t('diagram.dataAccess'), dataAccess],
     [t('diagram.pool'), pool], [t('diagram.driver'), driver], [t('diagram.database'), database],
     [t('dlg.repeats'), t('cond.repeatsDesc', { n: REPEATS })],
   ] };
 }
+
+// The columns of the data dialog. A group (query, acquire, commit) is a header over its columns. Means of round
+// trips are trimmed: they drop trailing zeros (0.4, 1), so that a value that is not a whole number stands out.
+const dataColumns = () => [
+  { key: 'workload', label: t('ctl.workload') }, { key: 'rows', label: t('col.rows') }, { key: 'delay', label: t('col.delta') },
+  { key: 'fetch', label: t('col.fetch') }, { key: 'succeeded', label: t('col.succeeded') },
+  ...[['roundtrips', 'col.roundtrips'], ['med', 'col.median'], ['p95', 'col.p95'], ['min', 'col.min'], ['max', 'col.max']]
+    .map(([key, label]) => ({ key, label: t(label), group: 'query' })),
+  ...['acquire', 'commit'].flatMap(group => [
+    { key: group, label: t('col.mean'), group },
+    { key: `${group}Rt`, label: t('col.roundtripsMean'), group, trim: true },
+  ]),
+];
 
 // Every condition of every workload in the test configuration. The selected workload comes first, and the rows
 // that the chart uses are marked.
@@ -214,67 +243,90 @@ function dataRows(selected, onChart) {
     .filter(a => a.workload === w.id)
     .sort((a, b) => a.rows - b.rows || a.delay - b.delay || a.fetch - b.fetch)
     .map(a => ({
-      [t('ctl.workload')]: workloadLabel(w), [t('col.rows')]: a.rows, [t('col.delta')]: a.delay, [t('col.fetch')]: a.fetch,
-      [t('col.succeeded')]: `${a.runs.length} / ${a.runs.length + a.failed}`, [t('col.roundtrips')]: v(a.roundtrips),
-      [t('col.median')]: v(a.med), [t('col.p95')]: v(a.p95), [t('col.min')]: v(a.min), [t('col.max')]: v(a.max),
+      workload: workloadLabel(w), rows: a.rows, delay: a.delay, fetch: a.fetch, succeeded: `${a.runs.length} / ${a.runs.length + a.failed}`,
+      ...Object.fromEntries(['roundtrips', 'med', 'p95', 'min', 'max', ...BOUNDARY_FIELDS].map(key => [key, v(a[key])])),
       _failed: a.failed > 0, _onChart: onChart.has(kk(a.workload, a.rows, a.fetch, a.delay)),
     })));
 }
 
 // ===== 3. Scenario simulation =====
-// A scenario is a named set of queries (workload, rows, count), defined in scenarios/<ID>.yaml.
-// A workload with a fixed row count ignores rows.
+// A scenario is a named list of transactions, each with its queries (workload, rows, count), defined in
+// scenarios/<ID>.yaml. A workload with a fixed row count ignores rows.
 const ROW_COLORS = ['--row-1', '--row-2', '--row-3', '--row-4', '--row-5'];
 const rowColor = i => i < ROW_COLORS.length ? ROW_COLORS[i] : '--muted';
-let QUERIES = [], scenarioId = null;
-const clone = queries => queries.map(query => ({ ...query }));
-const scenarioQueries = id => (SCENARIOS.find(x => x.id === id)?.queries ?? []).map(query => ({ w: String(query.workload), r: W(query.workload)?.rows.length === 1 ? W(query.workload).rows[0] : +query.rows, k: +query.count || 1 }));
-function loadScenario(id) { scenarioId = id; QUERIES = clone(scenarioQueries(id)); }
-const isDirty = () => scenarioId != null && JSON.stringify(QUERIES) !== JSON.stringify(scenarioQueries(scenarioId));
+let TXS = [], scenarioId = null;
+const clone = txs => txs.map(tx => ({ k: tx.k, queries: tx.queries.map(query => ({ ...query })) }));
+const scenarioQuery = query => ({ w: String(query.workload), r: W(query.workload)?.rows.length === 1 ? W(query.workload).rows[0] : +query.rows, k: query.count });
+const scenarioTxs = id => (SCENARIOS.find(x => x.id === id)?.transactions ?? []).map(tx => ({ k: tx.count, queries: tx.queries.map(scenarioQuery) }));
+function loadScenario(id) { scenarioId = id; TXS = clone(scenarioTxs(id)); }
+const isDirty = () => scenarioId != null && JSON.stringify(TXS) !== JSON.stringify(scenarioTxs(scenarioId));
 $('sim-scenario').addEventListener('change', e => { loadScenario(e.target.value); renderSim(); });
 $('sim-reset').addEventListener('click', () => { loadScenario(scenarioId); renderSim(); });
 const sSim = stepper($('s-simdelta'), () => renderSim());
 const sSimRows = stepper($('s-simrows'), () => {});
+// Every query with its transaction, in the order of the list, so that each one keeps its color.
+const allQueries = () => TXS.flatMap((tx, ti) => tx.queries.map(query => ({ tx, ti, query })));
 const queryTime = (query, d, f) => { const v = val(query.w, query.r, f, d); return v == null ? null : query.k * v; };
-const measuredQueries = () => QUERIES.filter(query => W(query.w));
-const total = (d, f) => measuredQueries().reduce((sum, query) => sum + (queryTime(query, d, f) ?? NaN), 0);
-function renderQueryList() {
-  $('scenario-queries').innerHTML = QUERIES.map((query, i) => {
-    const w = W(query.w);
-    const workloadSelect = `<select class="query-workload" data-i="${i}" data-k="w" aria-label="${esc(t('ctl.workload'))}">${w ? '' : `<option selected disabled>${esc(query.w)}</option>`}${workloadOptions(query.w)}</select>`;
-    const rowsSel = `<select data-i="${i}" data-k="r" aria-label="${esc(t('ctl.rows'))}" ${!w || w.rows.length < 2 ? 'disabled' : ''}>${ROWS.map(v => `<option value="${v}" ${v === query.r ? 'selected' : ''} ${w?.rows.includes(v) ? '' : 'disabled'}>${esc(t('unit.rows', { n: int(v) }))}</option>`).join('')}</select>`;
-    return `<li class="query one">
-      <span class="swatch" style="background:var(${rowColor(i)})"></span>
+const acquireTime = d => BOUNDARIES.get(d)?.acquire;
+// Every workload so far only reads, so the commit of every transaction is the mean over all measurements.
+const commitTime = (tx, d) => BOUNDARIES.get(d)?.commit;
+const boundaryTime = (tx, d) => (acquireTime(d) ?? NaN) + (commitTime(tx, d) ?? NaN);
+const txTime = (tx, d, f) => tx.k * (boundaryTime(tx, d) + tx.queries.filter(query => W(query.w)).reduce((sum, query) => sum + (queryTime(query, d, f) ?? NaN), 0));
+const total = (d, f) => TXS.reduce((sum, tx) => sum + txTime(tx, d, f), 0);
+const countControl = (attrs, value, less, more, label) => `<div class="count"><button ${attrs} data-step="-1" aria-label="${esc(less)}">−</button><input type="number" min="1" step="1" value="${value}" ${attrs} data-k="k" aria-label="${esc(label)}"><button ${attrs} data-step="1" aria-label="${esc(more)}">＋</button></div>`;
+function queryItem(query, ti, i, color) {
+  const w = W(query.w), attrs = `data-t="${ti}" data-i="${i}"`;
+  const workloadSelect = `<select class="query-workload" ${attrs} data-k="w" aria-label="${esc(t('ctl.workload'))}">${w ? '' : `<option selected disabled>${esc(query.w)}</option>`}${workloadOptions(query.w)}</select>`;
+  const rowsSel = `<select ${attrs} data-k="r" aria-label="${esc(t('ctl.rows'))}" ${!w || w.rows.length < 2 ? 'disabled' : ''}>${ROWS.map(v => `<option value="${v}" ${v === query.r ? 'selected' : ''} ${w?.rows.includes(v) ? '' : 'disabled'}>${esc(t('unit.rows', { n: int(v) }))}</option>`).join('')}</select>`;
+  return `<li class="query one">
+      <span class="swatch" style="background:var(${color})"></span>
       ${workloadSelect}
       ${rowsSel}
-      <div class="count"><button data-i="${i}" data-step="-1" aria-label="${esc(t('query.less'))}">−</button><input type="number" min="1" step="1" value="${query.k}" data-i="${i}" data-k="k" aria-label="${esc(t('query.count'))}"><button data-i="${i}" data-step="1" aria-label="${esc(t('query.more'))}">＋</button></div>
-      <button class="x" data-del="${i}" aria-label="${esc(t('query.remove'))}">×</button>
+      ${countControl(attrs, query.k, t('query.less'), t('query.more'), t('query.count'))}
+      <button class="x" ${attrs} data-del aria-label="${esc(t('query.remove'))}">×</button>
     </li>`;
-  }).join('');
+}
+function renderTransactions() {
+  let color = 0;
+  $('scenario-txs').innerHTML = TXS.map((tx, ti) => `<div class="query-list tx">
+      <div class="tx-head"><span class="tx-title">${esc(t('tx.title', { n: ti + 1 }))}</span>
+        ${countControl(`data-t="${ti}"`, tx.k, t('tx.less'), t('tx.more'), t('tx.count'))}
+        <button class="x" data-t="${ti}" data-del-tx aria-label="${esc(t('tx.remove'))}">×</button></div>
+      <ul class="query-list">${tx.queries.map((query, i) => queryItem(query, ti, i, rowColor(color++))).join('')}</ul>
+      <button class="add-row" data-t="${ti}" data-add-query style="border-bottom:0">${esc(t('query.add'))}</button>
+    </div>`).join('');
   $('sim-dirty').hidden = $('sim-reset').hidden = !isDirty();
-  const missing = [...new Set(QUERIES.filter(query => !W(query.w)).map(query => query.w))];
+  const missing = [...new Set(allQueries().filter(({ query }) => !W(query.w)).map(({ query }) => query.w))];
   $('sim-warn').textContent = missing.length ? t('sim.missing', { ids: missing.join(', ') }) : '';
   $('sim-warn').hidden = !missing.length;
 }
-$('scenario-queries').addEventListener('change', e => {
-  const { i, k } = e.target.dataset; if (i === undefined) return;
-  const query = QUERIES[+i];
-  if (k === 'w') { query.w = e.target.value; const w = W(query.w); if (!w.rows.includes(query.r)) query.r = w.rows.includes(100) ? 100 : w.rows.at(-1); }
-  else if (k === 'k') query.k = Math.max(1, Math.round(+e.target.value) || 1);
-  else query[k] = +e.target.value;
+$('scenario-txs').addEventListener('change', e => {
+  const { t: ti, i, k } = e.target.dataset; if (ti === undefined) return;
+  const tx = TXS[+ti], item = i === undefined ? tx : tx.queries[+i];
+  if (k === 'w') { item.w = e.target.value; const w = W(item.w); if (!w.rows.includes(item.r)) item.r = w.rows.includes(100) ? 100 : w.rows.at(-1); }
+  else if (k === 'k') item.k = Math.max(1, Math.round(+e.target.value) || 1);
+  else item[k] = +e.target.value;
   renderSim();
 });
-$('scenario-queries').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.step) { const query = QUERIES[+b.dataset.i]; query.k = Math.max(1, query.k + +b.dataset.step); renderSim(); }
-  if (b.dataset.del !== undefined) { QUERIES.splice(+b.dataset.del, 1); renderSim(); }
+$('scenario-txs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.dataset.t === undefined) return;
+  const tx = TXS[+b.dataset.t], item = b.dataset.i === undefined ? tx : tx.queries[+b.dataset.i];
+  if (b.dataset.step) item.k = Math.max(1, item.k + +b.dataset.step);
+  else if (b.dataset.del !== undefined) { tx.queries.splice(+b.dataset.i, 1); if (!tx.queries.length) TXS.splice(+b.dataset.t, 1); }
+  else if (b.dataset.delTx !== undefined) TXS.splice(+b.dataset.t, 1);
+  else if (b.dataset.addQuery !== undefined) tx.queries.push(newQuery());
+  else return;
+  renderSim();
 });
-$('query-add').addEventListener('click', () => { const w = WORKLOADS[0]; QUERIES.push({ w: w.id, r: w.rows[0], k: 1 }); renderSim(); });
-const queryLabel = query => { const w = W(query.w); return `${w ? workloadLabel(w) : query.w}${w && w.rows.length > 1 ? ` (${t('unit.rows', { n: int(query.r) })})` : ''} × ${query.k}`; };
+const newQuery = () => { const w = WORKLOADS[0]; return { w: w.id, r: w.rows[0], k: 1 }; };
+$('tx-add').addEventListener('click', () => { TXS.push({ k: 1, queries: [newQuery()] }); renderSim(); });
+const queryLabel = (query, ti) => { const w = W(query.w); return `${TXS.length > 1 ? `#${ti + 1} ` : ''}${w ? workloadLabel(w) : query.w}${w && w.rows.length > 1 ? ` (${t('unit.rows', { n: int(query.r) })})` : ''} × ${query.k}`; };
 function renderSim() {
   const d = sSim.value();
   $('v-simdelta').textContent = t('unit.ms', { v: d });
-  renderQueryList();
+  renderTransactions();
+  const b = BOUNDARIES.get(d), rt = v => v.toLocaleString(L.locale, { maximumFractionDigits: 2 });
+  $('v-boundary').textContent = b ? t('sim.boundary', { d: t('unit.ms', { v: d }), a: ms(b.acquire), an: rt(b.acquireRt), c: ms(b.commit), cn: rt(b.commitRt) }) : '';
   const ds = FETCH.map((f, i) => line(`fetchSize ${f}`, DELAYS.map(x => ({ x, y: total(x, f) })), css(SERIES[i % SERIES.length])));
   ds.push(marker(d, maxY(ds)));
   const o = opts(t('chart.delta'), t('sim.totalAxis'));
@@ -282,10 +334,16 @@ function renderSim() {
   draw('ch-sim', { data: { datasets: ds }, options: o });
   $('v-share').textContent = `ΔRTT ${t('unit.ms', { v: d })}`;
   const totals = FETCH.map(f => total(d, f));
-  const bars = QUERIES.map((query, i) => ({ query, i })).filter(({ query }) => W(query.w)).map(({ query, i }) => ({
-    label: queryLabel(query), backgroundColor: css(rowColor(i)), borderColor: css('--panel'), borderWidth: 1.5, borderRadius: 3, barThickness: 22,
-    data: FETCH.map((f, j) => (queryTime(query, d, f) ?? NaN) / totals[j] * 100), raw: FETCH.map(f => queryTime(query, d, f)),
-  }));
+  const bar = (label, color, time) => ({
+    label, backgroundColor: css(color), borderColor: css('--panel'), borderWidth: 1.5, borderRadius: 3, barThickness: 22,
+    data: FETCH.map((f, j) => (time(f) ?? NaN) / totals[j] * 100), raw: FETCH.map(time),
+  });
+  const bars = [
+    bar('acquire', '--muted', () => TXS.reduce((sum, tx) => sum + tx.k * (acquireTime(d) ?? NaN), 0)),
+    bar('commit', '--line-strong', () => TXS.reduce((sum, tx) => sum + tx.k * (commitTime(tx, d) ?? NaN), 0)),
+    ...allQueries().map((x, i) => ({ ...x, i })).filter(({ query }) => W(query.w))
+      .map(({ tx, ti, query, i }) => bar(queryLabel(query, ti), rowColor(i), f => { const v = queryTime(query, d, f); return v == null ? null : tx.k * v; })),
+  ];
   const ob = opts(t('sim.shareAxis'), '');
   ob.indexAxis = 'y';
   ob.scales.x.stacked = true; ob.scales.x.min = 0; ob.scales.x.max = 100;
@@ -318,20 +376,22 @@ $('r-show-workload').addEventListener('click', () => { $('w-workload').value = $
 
 // ===== Measurement conditions =====
 function renderCond() {
-  // Three fetches, each one round trip: ΔRTT wait, outbound, database processing, return.
-  $('tr-fetches').innerHTML = [320, 490, 660].map((x, i) => {
-    const b = x + 2;
-    return `<rect class="sp jd" x="${x}" y="106" width="160" height="26" rx="5"/><text class="st" x="${x + 80}" y="124" text-anchor="middle">fetch ${i + 1}</text>
-      <rect class="dl" x="${b}" y="156" width="50" height="26" rx="5"/><text class="st dlt" x="${b + 25}" y="174" text-anchor="middle">ΔRTT</text>
-      <rect class="sp net" x="${b + 52}" y="156" width="30" height="26" rx="5"/><text class="st" x="${b + 67}" y="174" text-anchor="middle">${esc(t('range.out'))}</text>
-      <rect class="sp db" x="${b + 84}" y="206" width="40" height="26" rx="5"/><text class="st" x="${b + 104}" y="224" text-anchor="middle">${esc(t('range.proc'))}</text>
-      <rect class="sp net" x="${b + 126}" y="156" width="30" height="26" rx="5"/><text class="st" x="${b + 141}" y="174" text-anchor="middle">${esc(t('range.back'))}</text>`;
-  }).join('') + '<rect class="sp jd" x="826" y="106" width="20" height="26" rx="5"/>';
+  // Each JDBC call below is one round trip: ΔRTT wait, outbound, database processing, return.
+  const roundTrip = b => `<rect class="dl" x="${b}" y="156" width="44" height="26" rx="5"/><text class="st dlt" x="${b + 22}" y="174" text-anchor="middle">ΔRTT</text>
+      <rect class="sp net" x="${b + 46}" y="156" width="28" height="26" rx="5"/><text class="st" x="${b + 60}" y="174" text-anchor="middle">${esc(t('range.out'))}</text>
+      <rect class="sp db" x="${b + 76}" y="206" width="32" height="26" rx="5"/><text class="st" x="${b + 92}" y="224" text-anchor="middle">${esc(t('range.proc'))}</text>
+      <rect class="sp net" x="${b + 110}" y="156" width="28" height="26" rx="5"/><text class="st" x="${b + 124}" y="174" text-anchor="middle">${esc(t('range.back'))}</text>`;
+  const calls = [[216, t('range.validate')], [408, 'fetch 1'], [554, 'fetch 2'], [746, 'commit']];
+  $('tr-fetches').innerHTML = calls.map(([x, label]) => `<rect class="sp jd" x="${x}" y="106" width="140" height="26" rx="5"/><text class="st" x="${x + 70}" y="124" text-anchor="middle">${esc(label)}</text>
+      ${roundTrip(x + 1)}`).join('');
   const condRows = rows => rows.map(([k, v]) => `<tr><th style="position:static">${esc(k)}</th><td style="white-space:normal">${esc(v)}</td></tr>`).join('');
   $('range-table').innerHTML = condRows([
+    ['acquire', t('range.acquireDesc')],
     [t('range.t'), t('range.tDesc')],
+    ['commit', t('range.commitDesc')],
     [t('range.outside'), t('range.outsideDesc')],
     [t('range.n'), t('range.nDesc')],
+    [t('range.stat'), t('range.statDesc')],
   ]);
   const m = MEASUREMENT, dp = CONFIG.configuration.database_parameters ?? {};
   $('cond-table').innerHTML = condRows([
@@ -339,6 +399,7 @@ function renderCond() {
     [t('cond.delay'), MEASUREMENT.delay.method === 'netem' ? t('cond.delayNetem') : t('cond.delayNone')],
     ...(MEASUREMENT.delay.command ? [[t('cond.delayCommand'), MEASUREMENT.delay.command]] : []),
     [t('cond.cache'), t('cond.cacheDesc')],
+    [t('cond.connection'), t('cond.connectionDesc')],
     ...(dp.result_cache_mode ? [[t('cond.resultCache'), t('cond.resultCacheDesc', { mode: dp.result_cache_mode, size: dp.client_result_cache_size })]] : []),
     [t('cond.repeats'), t('cond.repeatsDesc', { n: REPEATS })],
     [t('cond.warmups'), t('cond.warmupsDesc', { n: MEASUREMENT.warmups })],
@@ -383,25 +444,33 @@ document.querySelectorAll('.stab').forEach(tb => tb.addEventListener('click', ()
   renderAll();
 }));
 let current = null;
+const fmtCell = (c, v) => Number.isInteger(v) ? int(v) : c.trim ? v.toLocaleString(L.locale, { maximumFractionDigits: 2 }) : nf(v, 2);
 document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => {
   current = DATA[b.dataset.open]; if (!current) return;
   $('dlg-title').textContent = current.title;
   $('dlg-ctx').innerHTML = current.context.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  const cols = current.columns;
+  const isNumber = c => current.rows.some(r => typeof r[c.key] === 'number');
+  const starts = (c, i) => c.group && c.group !== cols[i - 1].group ? 'g-start' : '';
+  const th = (c, i, attrs = '') => `<th class="${isNumber(c) ? 'n' : ''} ${starts(c, i)}" ${attrs}>${esc(c.label)}</th>`;
+  const top = cols.map((c, i) => !c.group ? th(c, i, 'rowspan="2"')
+    : starts(c, i) ? `<th class="group g-start" colspan="${cols.filter(x => x.group === c.group).length}">${esc(c.group)}</th>` : '').join('');
+  const bottom = cols.map((c, i) => c.group ? th(c, i) : '').join('');
   // Keys that start with "_" mark rows and are not shown.
-  const cols = Object.keys(current.rows[0] || {}).filter(c => !c.startsWith('_'));
-  $('dlg-table').innerHTML = `<tr>${cols.map(c => `<th class="${typeof current.rows[0][c] === 'number' ? 'n' : ''}">${esc(c)}</th>`).join('')}</tr>` +
-    current.rows.map(r => `<tr class="${r._failed ? 'has-failure' : ''} ${r._onChart ? 'on-chart' : ''}">${cols.map(c => typeof r[c] === 'number' ? `<td class="n">${Number.isInteger(r[c]) ? int(r[c]) : nf(r[c], 2)}</td>` : `<td>${esc(r[c])}</td>`).join('')}</tr>`).join('');
+  $('dlg-table').innerHTML = `<thead><tr>${top}</tr><tr>${bottom}</tr></thead><tbody>` +
+    current.rows.map(r => `<tr class="${r._failed ? 'has-failure' : ''} ${r._onChart ? 'on-chart' : ''}">${cols.map((c, i) => typeof r[c.key] === 'number' ? `<td class="n ${starts(c, i)}">${fmtCell(c, r[c.key])}</td>` : `<td class="${starts(c, i)}">${esc(r[c.key])}</td>`).join('')}</tr>`).join('') + '</tbody>';
   $('dlg').showModal();
 }));
 $('dlg-close').addEventListener('click', () => $('dlg').close());
 $('dlg').addEventListener('click', e => { if (e.target === $('dlg')) $('dlg').close(); });
 $('dlg-csv').addEventListener('click', () => {
   // The CSV repeats the context (test configuration, workload, repetitions) on every line, so that one file is self-contained.
-  const ctx = current.context.filter(([k]) => !Object.keys(current.rows[0]).includes(k));
-  const rows = current.rows.map(r => ({ ...Object.fromEntries(ctx), ...r }));
-  const cols = Object.keys(rows[0] || {}).filter(c => !c.startsWith('_'));
+  // A column in a group is named after both, such as "acquire Mean (ms)".
+  const labels = current.columns.map(c => c.group ? `${c.group} ${c.label}` : c.label);
+  const ctx = current.context.filter(([k]) => !labels.includes(k));
   const cell = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
-  const text = [cols.map(cell).join(','), ...rows.map(r => cols.map(c => cell(typeof r[c] === 'number' ? +r[c].toFixed(4) : r[c])).join(','))].join('\n');
+  const text = [[...ctx.map(([k]) => k), ...labels].map(cell).join(','),
+    ...current.rows.map(r => [...ctx.map(([, v]) => v), ...current.columns.map(c => typeof r[c.key] === 'number' ? +r[c.key].toFixed(4) : r[c.key])].map(cell).join(','))].join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })); a.download = `${CONFIG.id}.csv`; a.click();
 });
 

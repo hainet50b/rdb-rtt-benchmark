@@ -1,0 +1,11 @@
+name: Product lookup per order line, N+1 (example)
+transactions:
+  - queries:
+      - workload: W-02
+        rows: 100
+        count: 1
+    count: 1
+  - queries:
+      - workload: W-01
+        count: 1
+    count: 100

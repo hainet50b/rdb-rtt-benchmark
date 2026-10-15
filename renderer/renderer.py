@@ -95,13 +95,18 @@ def load_measurements(directory):
     }
 
 
+SPANS = ["query", "acquire", "commit"]
+
+
 def load_results(file):
-    """Measurements as [rows, fetch_size, delay_ms, elapsed_ms, roundtrips]. A failed one has None for both values."""
+    """Measurements as [rows, fetch_size, delay_ms, query_ms, query_roundtrips, acquire_ms, acquire_roundtrips,
+    commit_ms, commit_roundtrips]. A failed one has None for the values of the spans."""
     if not file.exists():
         return []
     with file.open(newline="", encoding="utf-8") as f:
         return [[int(r["rows"]), int(r["fetch_size"]), int(r["delay_ms"]),
-                 None if r["error"] else float(r["elapsed_ms"]), None if r["error"] else int(r["roundtrips"])]
+                 *(None if r["error"] else convert(r[f"{span}_{unit}"])
+                   for span in SPANS for unit, convert in (("ms", float), ("roundtrips", int)))]
                 for r in csv.DictReader(f)]
 
 
@@ -111,7 +116,14 @@ def load_scenarios(directory):
         s = read_yaml(file)
         if not s.get("name"):
             raise SystemExit(f"{file}: name is required")
-        scenarios.append({"id": file.stem, "name": s["name"], "queries": s["queries"]})
+        transactions = s.get("transactions")
+        if not transactions or not all(isinstance(tx, dict) and tx.get("queries") for tx in transactions):
+            raise SystemExit(f"{file}: transactions, each with queries, are required")
+        for tx in transactions:
+            for item in [tx, *tx["queries"]]:
+                if not (isinstance(item.get("count"), int) and item["count"] >= 1):
+                    raise SystemExit(f"{file}: count of each transaction and query must be 1 or more")
+        scenarios.append({"id": file.stem, "name": s["name"], "transactions": s["transactions"]})
     return scenarios
 
 
