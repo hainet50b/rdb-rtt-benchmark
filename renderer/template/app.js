@@ -88,6 +88,13 @@ const line = (label, data, col, dash) => ({ type: 'line', label, data: pts(data)
 const marker = (x, top) => ({ type: 'line', label: '_marker', data: [{ x, y: 0 }, { x, y: top }], borderColor: css('--accent'), borderDash: [3, 3], borderWidth: 1.5, pointRadius: 0 });
 const tipLabel = it => `${it.dataset.label.replace(/^_/, '')}: ${ms(it.parsed.y)}`;
 const workloadOptions = current => WORKLOADS.map(w => `<option value="${esc(w.id)}" ${w.id === current ? 'selected' : ''}>${esc(workloadLabel(w))}</option>`).join('');
+// Logarithmic axes label only 1, 3, 10, 30, ... so that labels near each other do not overlap.
+function logAxes(o) {
+  for (const axis of [o.scales.x, o.scales.y]) {
+    axis.type = 'logarithmic';
+    axis.ticks.callback = v => { const m = v / 10 ** Math.floor(Math.log10(v) + 1e-9); return Math.abs(m - 1) < 1e-6 || Math.abs(m - 3) < 1e-6 ? int(v) : ''; };
+  }
+}
 const maxY = ds => Math.max(0, ...ds.flatMap(s => s.data.map(pt => pt.y)));
 
 // ===== Stepped slider (stops only at measured values; values that are not measured are greyed out) =====
@@ -203,7 +210,7 @@ function renderResult() {
     ds.push(marker(d, maxY(ds)));
   } else {
     o = opts(t('chart.rows'), t('chart.response'));
-    o.scales.x.type = o.scales.y.type = 'logarithmic';
+    logAxes(o);
     o.scales.x.min = ROWS[0]; o.scales.x.max = ROWS.at(-1);
     FETCH.forEach((f, i) => {
       const col = css(SERIES[i % SERIES.length]);
@@ -432,7 +439,7 @@ function renderModel() {
     ds.push({ type: 'line', label: t('model.identity'), data: [{ x: lo, y: lo }, { x: hi, y: hi }], borderColor: css('--muted'), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 });
   }
   const o = opts(t('model.xAxis'), t('model.yAxis'));
-  o.scales.x.type = o.scales.y.type = 'logarithmic';
+  logAxes(o);
   o.plugins.tooltip.callbacks = { label: it => t('model.tip', { label: it.dataset.label, x: ms(it.parsed.x), y: ms(it.parsed.y) }) };
   draw('ch-parity', { data: { datasets: ds }, options: o });
 }
