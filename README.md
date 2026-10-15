@@ -14,7 +14,13 @@ T is the SQL response time, T0 is the response time at ΔRTT 0 ms, n is the numb
 
 [The sample report](https://hainet50b.github.io/rdb-rtt-benchmark/) shows SQL response times for each application configuration.
 
-![The report](docs/images/report.png)
+The results show how the response time of a query grows with ΔRTT and round trips.
+
+![Results](docs/images/results.png)
+
+The scenario simulation estimates the response time of transactions and the queries in them.
+
+![Scenario simulation](docs/images/scenario.png)
 
 ## Quick start
 
