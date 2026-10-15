@@ -8,26 +8,30 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The interface of a measurement application: environment variables that the driver sets for each launch.
- * The connection variables (BENCH_DB_HOST and others) are read by application.yaml.
+ * The connection variables (RDB_RTT_BENCHMARK_DB_HOST and others) are read by application.yaml.
  */
 record MeasurementArguments(Map<String, String> environment) {
 
     private static final JsonMapper JSON = new JsonMapper();
 
     String databaseType() {
-        return required("BENCH_DB_TYPE");
+        return required("RDB_RTT_BENCHMARK_DB_TYPE");
     }
 
-    /** {@code BENCH_PARAMETERS={"rows": 100, "id": 42}} */
+    /** {@code RDB_RTT_BENCHMARK_PARAMETERS={"rows": 100, "id": 42}} */
     Query query() {
-        Map<String, Object> parameters = JSON.readValue(environment.getOrDefault("BENCH_PARAMETERS", "{}"),
+        Map<String, Object> parameters = JSON.readValue(
+                environment.getOrDefault("RDB_RTT_BENCHMARK_PARAMETERS", "{}"),
                 new TypeReference<>() {
                 });
-        return new Query(required("BENCH_QUERY"), parameters, Integer.parseInt(required("BENCH_FETCH_SIZE")));
+        return new Query(
+                required("RDB_RTT_BENCHMARK_QUERY"),
+                parameters,
+                Integer.parseInt(required("RDB_RTT_BENCHMARK_FETCH_SIZE")));
     }
 
     int executions() {
-        return Integer.parseInt(required("BENCH_EXECUTIONS"));
+        return Integer.parseInt(required("RDB_RTT_BENCHMARK_EXECUTIONS"));
     }
 
     private String required(String name) {

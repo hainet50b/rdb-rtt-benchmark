@@ -1,5 +1,5 @@
 # The Oracle Database container in compose.yaml.
-# Values can refer to environment variables, such as ${BENCH_DB_PASSWORD}.
+# Values can refer to environment variables, such as ${RDB_RTT_BENCHMARK_DB_PASSWORD}.
 type: oracle
 host: rdb-rtt-benchmark-oracle
 port: 1521

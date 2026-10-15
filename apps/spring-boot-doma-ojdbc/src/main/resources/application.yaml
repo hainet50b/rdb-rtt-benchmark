@@ -3,9 +3,9 @@ spring:
     banner-mode: off
     log-startup-info: false
   datasource:
-    url: jdbc:oracle:thin:@//${BENCH_DB_HOST}:${BENCH_DB_PORT}/${BENCH_DB_NAME}
-    username: ${BENCH_DB_USER}
-    password: ${BENCH_DB_PASSWORD}
+    url: jdbc:oracle:thin:@//${RDB_RTT_BENCHMARK_DB_HOST}:${RDB_RTT_BENCHMARK_DB_PORT}/${RDB_RTT_BENCHMARK_DB_DATABASE}
+    username: ${RDB_RTT_BENCHMARK_DB_USER}
+    password: ${RDB_RTT_BENCHMARK_DB_PASSWORD}
     hikari:
       minimum-idle: 1
       maximum-pool-size: 1

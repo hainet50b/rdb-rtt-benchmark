@@ -158,10 +158,10 @@ class Run:
         warmups = self.conditions.warmups
         output = app.launch({
             **self.database.environment(),
-            "BENCH_QUERY": workload.query,
-            "BENCH_PARAMETERS": json.dumps(workload.parameters_for(rows)),
-            "BENCH_FETCH_SIZE": str(fetch_size),
-            "BENCH_EXECUTIONS": str(warmups + self.conditions.repeats),
+            "RDB_RTT_BENCHMARK_QUERY": workload.query,
+            "RDB_RTT_BENCHMARK_PARAMETERS": json.dumps(workload.parameters_for(rows)),
+            "RDB_RTT_BENCHMARK_FETCH_SIZE": str(fetch_size),
+            "RDB_RTT_BENCHMARK_EXECUTIONS": str(warmups + self.conditions.repeats),
         }, join_delay=self.conditions.delay == "netem")
         app_dir = self.output / "apps" / app.name
         if not (app_dir / "configuration.json").exists():
@@ -245,9 +245,14 @@ class Database:
 
     def environment(self):
         v = self.values
-        return {"BENCH_DB_TYPE": v["type"], "BENCH_DB_HOST": str(v["host"]), "BENCH_DB_PORT": str(v["port"]),
-                "BENCH_DB_NAME": str(v["database"]), "BENCH_DB_USER": str(v["user"]),
-                "BENCH_DB_PASSWORD": str(v["password"])}
+        return {
+            "RDB_RTT_BENCHMARK_DB_TYPE": v["type"],
+            "RDB_RTT_BENCHMARK_DB_HOST": str(v["host"]),
+            "RDB_RTT_BENCHMARK_DB_PORT": str(v["port"]),
+            "RDB_RTT_BENCHMARK_DB_DATABASE": str(v["database"]),
+            "RDB_RTT_BENCHMARK_DB_USER": str(v["user"]),
+            "RDB_RTT_BENCHMARK_DB_PASSWORD": str(v["password"]),
+        }
 
     def recorded(self):
         return {k: self.values[k] for k in DATABASE_FIELDS_TO_RECORD if k in self.values}
