@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600&family=Noto+Serif+JP:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+{{style}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="logo">Δ</div><div class="title">rdb-rtt-benchmark</div>
+    <span class="sp"></span>
+    <span class="chip" id="name-chip" hidden></span>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1 data-i18n="app.title"></h1>
+      <p class="lead" data-i18n-html="hero.lead"></p>
+    </div>
+    <div class="eq-card" role="figure" aria-labelledby="eq-title">
+      <div class="eq-title" id="eq-title" data-i18n="eq.title"></div>
+      <div class="eq">T = T<sub>0</sub> + <span class="n">n</span> × ΔRTT</div>
+      <div class="eq-legend">
+        <b>T<sub>0</sub></b><span data-i18n="eq.t0"></span>
+        <b class="n">n</b><span data-i18n="eq.n"></span>
+        <b>ΔRTT</b><span data-i18n="eq.drtt"></span>
+      </div>
+    </div>
+  </section>
+
+
+  <main class="bench">
+    <aside class="pane config" aria-labelledby="h-config">
+      <div class="pane-head"><span class="step-no">1</span><h2 id="h-config" data-i18n="config.title"></h2></div>
+      <p class="hint" data-i18n="config.hint"></p>
+      <div class="diagram" id="diagram">
+        <svg class="wires" id="wires" aria-hidden="true"></svg>
+        <div class="bound"><span class="tag" data-i18n="diagram.host"></span>
+          <div class="bound"><span class="tag" data-i18n="diagram.vm"></span>
+            <div class="ctr">
+              <div class="name" data-i18n="diagram.appContainer"></div>
+              <div class="frame"><span class="tag" data-i18n="diagram.testApp"></span>
+                <div class="comp"><label for="c-fw" data-i18n="diagram.framework"></label><select id="c-fw" disabled></select></div>
+                <div class="down" aria-hidden="true"></div>
+                <div class="comp"><label for="c-da" data-i18n="diagram.dataAccess"></label><select id="c-da" disabled></select></div>
+                <div class="down" aria-hidden="true"></div>
+                <div class="comp">
+                  <label for="c-pool" data-i18n="diagram.pool"></label><select id="c-pool"></select>
+                  <div class="gap"></div>
+                  <label for="c-drv" data-i18n="diagram.driver"></label><select id="c-drv" disabled></select>
+                  <div class="conns" data-i18n-aria="diagram.connections"><span data-i18n="diagram.connections"></span><i class="busy" id="conn-busy"></i></div>
+                </div>
+              </div>
+              <div class="nic" id="nic">NIC</div>
+              <div class="nic-note" data-i18n="diagram.nicNote"></div>
+            </div>
+            <div class="ctr">
+              <div class="name" data-i18n="diagram.dbContainer"></div>
+              <div class="comp" id="db-comp"><label for="c-db" data-i18n="diagram.database"></label><select id="c-db"></select></div>
+              <div class="down" aria-hidden="true"></div>
+              <div class="comp" data-i18n="diagram.schema"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="legend"><span><i class="l-conn"></i><span data-i18n="legend.connection"></span></span><span><i class="l-busy"></i><span data-i18n="legend.busy"></span></span><span><i class="l-nic"></i><span data-i18n="legend.nic"></span></span><span><i class="l-sql"></i><span data-i18n="legend.sql"></span></span></div>
+    </aside>
+
+    <section class="pane">
+      <div class="steps" role="tablist">
+        <button class="stab" role="tab" aria-selected="true" data-tab="result"><span class="step-no">2</span><span class="t" data-i18n="tab.result"></span><span class="chev" aria-hidden="true">›</span></button>
+        <button class="stab" role="tab" aria-selected="false" data-tab="sim"><span class="step-no">3</span><span class="t" data-i18n="tab.sim"></span></button>
+        <button class="stab minor" role="tab" aria-selected="false" data-tab="workload"><span class="t" data-i18n="tab.workload"></span></button>
+        <button class="stab minor" role="tab" aria-selected="false" data-tab="model"><span class="t" data-i18n="tab.model"></span></button>
+        <button class="stab minor" role="tab" aria-selected="false" data-tab="cond"><span class="t" data-i18n="tab.cond"></span></button>
+      </div>
+      <p class="warn" id="run-warn" hidden></p>
+
+      <!-- 2. Results -->
+      <div class="tabpanel" data-panel="result">
+        <div class="controls">
+          <div class="ctl wide"><div class="ctl-label" data-i18n="ctl.workload"></div><div class="row-ctl"><select id="r-workload" class="workload-select" data-i18n-aria="ctl.workload"></select><button class="link-btn" id="r-show-workload" data-i18n="ctl.showWorkload"></button></div></div>
+          <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.rows"></span><span class="val" id="v-rows"></span></div><div class="stepper" id="s-rows" data-i18n-aria="ctl.rows"></div></div>
+          <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.delta"></span><span class="val" id="v-delta"></span></div><div class="stepper" id="s-delta" aria-label="ΔRTT"></div></div>
+          <div class="ctl wide row-ctl"><div class="axis-ctl"><span class="ctl-label" data-i18n="ctl.axis"></span><div class="seg" id="r-axis" role="group" data-i18n-aria="ctl.axis"><button data-v="rows" data-i18n="ctl.axisRows"></button><button data-v="delay" data-i18n="ctl.axisDelta"></button></div></div><span class="keyline" id="r-key"><span><i></i><span data-i18n="key.selected"></span></span><span><i class="dash"></i><span data-i18n="key.zero"></span></span></span></div>
+        </div>
+        <div class="chart"><canvas id="ch-result"></canvas></div>
+        <div class="foot"><button class="btn" data-open="result" data-i18n="btn.viewData"></button></div>
+      </div>
+
+      <!-- 3. Scenario simulation -->
+      <div class="tabpanel" data-panel="sim" hidden>
+        <div class="scenario-bar">
+          <span class="ctl-label" style="margin:0" data-i18n="sim.scenario"></span>
+          <select id="sim-scenario" data-i18n-aria="sim.scenario"></select>
+          <span class="dirty" id="sim-dirty" data-i18n="sim.dirty" hidden></span>
+          <button class="link-btn" id="sim-reset" data-i18n="sim.reset" hidden></button>
+        </div>
+        <p class="warn" id="sim-warn" hidden></p>
+        <div class="query-list" style="margin-bottom:16px">
+          <ul class="query-list" id="scenario-queries" style="border:0;border-radius:0"></ul>
+          <button class="add-row" id="query-add" style="border-bottom:0" data-i18n="query.add"></button>
+        </div>
+        <div class="controls">
+          <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.rows"></span><span class="val off" data-i18n="ctl.perSql"></span></div><div class="stepper" id="s-simrows" data-i18n-aria="ctl.rows"></div></div>
+          <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.delta"></span><span class="val" id="v-simdelta"></span></div><div class="stepper" id="s-simdelta" aria-label="ΔRTT"></div></div>
+          <div class="ctl wide row-ctl"><div class="axis-ctl"><span class="ctl-label" data-i18n="ctl.axis"></span><div class="seg" role="group" data-i18n-aria="ctl.axis"><button disabled aria-pressed="false" data-i18n="ctl.axisRows"></button><button aria-pressed="true" data-i18n="ctl.axisDelta"></button></div></div></div>
+        </div>
+        <div class="share-head" style="margin-top:4px"><h3 class="sub-h" style="margin:0" data-i18n="sim.total"></h3></div>
+        <div class="chart"><canvas id="ch-sim"></canvas></div>
+        <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n="sim.share"></h3><span class="cap" id="v-share"></span></div>
+        <div class="chart" style="height:220px"><canvas id="ch-share"></canvas></div>
+      </div>
+
+      <!-- Workloads -->
+      <div class="tabpanel" data-panel="workload" hidden>
+        <div class="controls" style="grid-template-columns:1fr">
+          <div class="ctl"><div class="ctl-label" data-i18n="ctl.workload"></div><select id="w-workload" class="workload-select" data-i18n-aria="ctl.workload"></select></div>
+        </div>
+        <div class="share-head" style="margin-top:14px"><h3 class="sub-h" style="margin:0" data-i18n="workload.sql"></h3><button class="file" data-save="query.sql">query.sql<svg class="dl-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg></button></div>
+        <pre class="code" id="w-query"></pre>
+        <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n="workload.schema"></h3><button class="file" data-save="schema.sql">schema.sql<svg class="dl-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg></button></div>
+        <pre class="code" id="w-schema"></pre>
+        <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n="workload.data"></h3><button class="file" data-save="data.sql">data.sql<svg class="dl-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10"/></svg></button></div>
+        <pre class="code" id="w-data"></pre>
+        <p class="cap" id="w-data-more" style="margin-top:6px"></p>
+      </div>
+
+      <!-- Measurement conditions -->
+      <div class="tabpanel" data-panel="cond" hidden>
+        <div class="share-head" style="margin-top:0"><h3 class="sub-h" style="margin:0" data-i18n="range.title"></h3></div>
+        <div class="trace">
+          <svg viewBox="0 0 1000 300" role="img" aria-labelledby="tr-title tr-desc">
+            <title id="tr-title" data-i18n="range.svgTitle"></title>
+            <desc id="tr-desc" data-i18n="range.svgDesc"></desc>
+            <defs>
+              <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" class="h-bg"/><line x1="0" y1="0" x2="0" y2="6" class="h-ln"/></pattern>
+              <marker id="tr-ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" class="axis-h"/></marker>
+            </defs>
+            <text class="lane" x="10" y="64" data-i18n="range.laneDa1"></text><text class="lane" x="10" y="80" data-i18n="range.laneDa2"></text>
+            <text class="lane" x="10" y="122" data-i18n="range.laneJdbc"></text>
+            <text class="lane" x="10" y="172" data-i18n="range.laneNet"></text>
+            <text class="lane" x="10" y="222" data-i18n="range.laneDb"></text>
+            <line class="grid" x1="166" y1="48" x2="166" y2="240"/>
+            <rect class="band" x="310" y="40" width="540" height="200" rx="8"/>
+            <path class="brace" d="M310 34 V26 H850 V34"/>
+            <text class="brace-t" x="580" y="18" text-anchor="middle" data-i18n="range.brace"></text>
+            <rect class="sp out" x="172" y="56" width="50" height="26" rx="5"/><text class="st" x="197" y="74" text-anchor="middle" data-i18n="range.acquire"></text>
+            <rect class="sp out" x="230" y="56" width="70" height="26" rx="5"/><text class="st" x="265" y="74" text-anchor="middle" data-i18n="range.statsBefore"></text>
+            <rect class="sp in" x="312" y="56" width="536" height="26" rx="5"/><text class="st in" x="580" y="74" text-anchor="middle" data-i18n="range.dao"></text>
+            <rect class="sp out" x="860" y="56" width="70" height="26" rx="5"/><text class="st" x="895" y="74" text-anchor="middle" data-i18n="range.statsAfter"></text>
+            <rect class="sp out" x="938" y="56" width="50" height="26" rx="5"/><text class="st" x="963" y="74" text-anchor="middle" data-i18n="range.release"></text>
+            <g id="tr-fetches"></g>
+            <line class="axis" x1="166" y1="262" x2="985" y2="262" marker-end="url(#tr-ah)"/>
+            <text class="st" x="985" y="284" text-anchor="end" data-i18n="range.time"></text>
+          </svg>
+        </div>
+        <div class="tr-legend"><span><i class="l-in"></i><span data-i18n="range.lgIn"></span></span><span><i class="l-out"></i><span data-i18n="range.lgOut"></span></span><span><i class="l-dl"></i><span data-i18n="range.lgDelay"></span></span><span><i class="l-net"></i><span data-i18n="range.lgNet"></span></span><span><i class="l-db"></i><span data-i18n="range.lgDb"></span></span></div>
+        <div class="scroll" style="margin-top:14px"><table id="range-table" class="cond"></table></div>
+        <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n="cond.title"></h3></div>
+        <div class="scroll"><table id="cond-table" class="cond"></table></div>
+      </div>
+
+      <!-- Model validation -->
+      <div class="tabpanel" data-panel="model" hidden>
+        <div class="controls">
+          <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.rows"></span><span class="val" id="v-mrows"></span></div><div class="stepper" id="s-mrows" data-i18n-aria="ctl.rows"></div></div>
+          <div class="ctl"><div class="ctl-label"><span data-i18n="ctl.delta"></span><span class="val" id="v-mdelta"></span></div><div class="stepper" id="s-mdelta" aria-label="ΔRTT"></div></div>
+        </div>
+        <div class="share-head" style="margin-top:4px"><h3 class="sub-h" style="margin:0" data-i18n-html="model.tableTitle"></h3><span class="cap" data-i18n-html="model.formula"></span></div>
+        <div class="scroll"><table id="md-table" class="md"></table></div>
+        <div class="share-head"><h3 class="sub-h" style="margin:0" data-i18n-html="model.parityTitle"></h3></div>
+        <div class="chart"><canvas id="ch-parity"></canvas></div>
+      </div>
+    </section>
+  </main>
+
+</div>
+
+<dialog id="dlg" aria-labelledby="dlg-title">
+  <div class="dlg-head"><h3 id="dlg-title"></h3><button class="btn" id="dlg-csv" data-i18n="dlg.csv"></button><button class="btn primary" id="dlg-close" data-i18n="dlg.close"></button></div>
+  <div class="dlg-body"><dl class="ctx" id="dlg-ctx"></dl><div class="dlg-table"><table id="dlg-table"></table></div></div>
+</dialog>
+
+<script id="report-data" type="application/json">{{data}}</script>
+<script>
+{{chart}}
+</script>
+<script>
+{{app}}
+</script>
+</body>
+</html>
