@@ -1,0 +1,9 @@
+name: RDB RTT Benchmark
+database: databases/oracle.yaml
+conditions: conditions/standard.yaml
+apps:
+  - spring-boot-doma-ucp-ojdbc
+  - spring-boot-doma-hikari-ojdbc
+workloads:
+  - W-01
+  - W-02
