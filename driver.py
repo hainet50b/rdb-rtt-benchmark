@@ -31,7 +31,9 @@ LOCAL_DATABASE_CONTAINER = "rdb-rtt-benchmark-{type}"
 DELAY_CONTAINER = "rdb-rtt-benchmark-delay"
 # What services/delay/delay.sh runs, recorded so that the report can show how ΔRTT was added.
 DELAY_COMMAND = "tc qdisc replace dev eth0 root netem delay {ms}ms"
-RESULT_COLUMNS = ["rows", "fetch_size", "delay_ms", "repeat", "elapsed_ms", "roundtrips", "fetched_rows", "error"]
+# Elapsed time and round trips of the three spans of one execution: acquire, the query (T and n), and commit.
+SPAN_COLUMNS = ["acquire_ms", "acquire_roundtrips", "query_ms", "query_roundtrips", "commit_ms", "commit_roundtrips"]
+RESULT_COLUMNS = ["rows", "fetch_size", "delay_ms", "repeat", *SPAN_COLUMNS, "fetched_rows", "error"]
 
 
 def main():
@@ -176,9 +178,9 @@ class Run:
                 writer.writeheader()
             for repeat, e in enumerate(executions, 1):
                 writer.writerow(result_row(e, rows, fetch_size, delay, repeat))
-        elapsed = [e["elapsed_ms"] for e in executions if not e["error"]]
+        elapsed = [e["query_ms"] for e in executions if not e["error"]]
         median = f"{statistics.median(elapsed):.3f} ms" if elapsed else "failed"
-        roundtrips = executions[-1]["roundtrips"] if elapsed else "-"
+        roundtrips = executions[-1]["query_roundtrips"] if elapsed else "-"
         print(f"{app.name} {workload.id} rows={rows} fetchSize={fetch_size} ΔRTT={delay}ms: "
               f"median {median}, n={roundtrips}", flush=True)
 
@@ -199,8 +201,8 @@ def result_row(execution, rows, fetch_size, delay, repeat):
     error = execution["error"]
     if not error and execution["fetched_rows"] != rows:
         error = f"fetched {execution['fetched_rows']} rows instead of {rows}"
-    return {"rows": rows, "fetch_size": fetch_size, "delay_ms": delay, "repeat": repeat,
-            "elapsed_ms": execution["elapsed_ms"], "roundtrips": execution["roundtrips"],
+    spans = {k: execution[k] for k in SPAN_COLUMNS}
+    return {"rows": rows, "fetch_size": fetch_size, "delay_ms": delay, "repeat": repeat, **spans,
             "fetched_rows": execution["fetched_rows"], "error": error or ""}
 
 
