@@ -23,11 +23,10 @@ public class MeasurementService {
     }
 
     public MeasurementResult measure(Query query, int executions) {
-        long overhead = executionService.readOverheadRoundtrips();
         List<Measurement> measurements = new ArrayList<>(executions);
         for (int i = 0; i < executions; i++) {
             try {
-                measurements.add(executionService.execute(query, overhead));
+                measurements.add(executionService.execute(query));
             } catch (RuntimeException e) {
                 measurements.add(Measurement.failed(e));
             }

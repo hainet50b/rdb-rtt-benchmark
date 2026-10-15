@@ -1,7 +1,9 @@
 package io.github.hainet50b.rdbrtt.application.measurement;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
 
 import io.github.hainet50b.rdbrtt.domain.datasource.measurement.QueryRepository;
 import io.github.hainet50b.rdbrtt.domain.datasource.measurement.SessionStatisticsRepository;
@@ -9,35 +11,56 @@ import io.github.hainet50b.rdbrtt.domain.model.measurement.Measurement;
 import io.github.hainet50b.rdbrtt.domain.model.measurement.Query;
 
 /**
- * Each method is one transaction, so the query and the statistics use the same connection.
- * Reading the statistics is outside T.
+ * Runs the query in one transaction and measures three spans: acquire, the query, and commit.
+ * The statistics are read between the spans, outside the measured time.
  */
 @Service
 public class ExecutionService {
+
+    private final PlatformTransactionManager transactionManager;
 
     private final QueryRepository queryRepository;
 
     private final SessionStatisticsRepository statisticsRepository;
 
-    public ExecutionService(QueryRepository queryRepository, SessionStatisticsRepository statisticsRepository) {
+    public ExecutionService(
+            PlatformTransactionManager transactionManager,
+            QueryRepository queryRepository,
+            SessionStatisticsRepository statisticsRepository) {
+        this.transactionManager = transactionManager;
         this.queryRepository = queryRepository;
         this.statisticsRepository = statisticsRepository;
     }
 
-    @Transactional
-    public Measurement execute(Query query, long overheadRoundtrips) {
-        long before = statisticsRepository.readRoundtrips();
-        long start = System.nanoTime();
-        int rows = queryRepository.fetch(query);
-        long end = System.nanoTime();
-        long after = statisticsRepository.readRoundtrips();
-        return Measurement.succeeded((end - start) / 1e6, after - before - overheadRoundtrips, rows);
+    public Measurement execute(Query query) {
+        long beforeAcquire = statisticsRepository.readRoundtrips();
+        long acquireStart = System.nanoTime();
+        TransactionStatus transaction = transactionManager.getTransaction(TransactionDefinition.withDefaults());
+        long acquireEnd = System.nanoTime();
+        try {
+            long beforeQuery = statisticsRepository.readRoundtrips();
+            long queryStart = System.nanoTime();
+            int rows = queryRepository.fetch(query);
+            long queryEnd = System.nanoTime();
+            long beforeCommit = statisticsRepository.readRoundtrips();
+            long commitStart = System.nanoTime();
+            transactionManager.commit(transaction);
+            long commitEnd = System.nanoTime();
+            long afterCommit = statisticsRepository.readRoundtrips();
+            return Measurement.succeeded(
+                    new Measurement.Span(milliseconds(acquireStart, acquireEnd), beforeQuery - beforeAcquire),
+                    new Measurement.Span(milliseconds(queryStart, queryEnd), beforeCommit - beforeQuery),
+                    new Measurement.Span(milliseconds(commitStart, commitEnd), afterCommit - beforeCommit),
+                    rows);
+        } catch (RuntimeException e) {
+            if (!transaction.isCompleted()) {
+                transactionManager.rollback(transaction);
+            }
+            throw e;
+        }
     }
 
-    /** Reading the statistics is itself a round trip. Two reads with nothing in between show what to subtract. */
-    @Transactional
-    public long readOverheadRoundtrips() {
-        long before = statisticsRepository.readRoundtrips();
-        return statisticsRepository.readRoundtrips() - before;
+    private static double milliseconds(long start, long end) {
+        return (end - start) / 1e6;
     }
 }
